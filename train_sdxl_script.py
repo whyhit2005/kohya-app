@@ -13,25 +13,27 @@ def augment_parse():
                         help='Directory to work')
     parser.add_argument('--subfolders', action='store_true',
                         help='Process subfolders')
+    parser.add_argument('--init_new', action='store_true',
+                        help='Initialize new data')
     parser.add_argument('--pretrained_model_name_or_path', type=str,
                         default="stabilityai/stable-diffusion-xl-base-1.0",
                         help='Pretrained model name or path')
-    parser.add_argument('--ex_vae', action='store_true',
-                        help='extra vae')
+    parser.add_argument('--add_vae', action='store_true',
+                        help='addtional vae')
     parser.add_argument('--batch_size', type=int,
-                        default=4,
+                        default=5,
                         help='Batch size')
     parser.add_argument('--rank', type=int,
-                        default=64,
+                        default=128,
                         help='Rank')
-    parser.add_argument('--init_new', action='store_true',
-                        help='Initialize new data')
+    parser.add_argument('--alpha', type=float,
+                        default=1.0,
+                        help='Alpha')
     parser.add_argument('--max_train_steps', type=int,
                         default=1000,
                         help='Max train steps')
     parser.add_argument('--prodigy', action='store_true',
                         help='Use prodigy optimizer')
-    
     return parser.parse_args()
     
 def create_train_toml(source_dir, output_dir, args):
@@ -70,24 +72,26 @@ def train_process(source_dir, args):
     if donefile.exists() and len(list(model_files)) > 0:
         print(f"Skip {source_dir.name}")
         return 0
+    cmdfile = output_dir / 'cmd.txt'
     
     base_model = args.pretrained_model_name_or_path
     # base_model = "/home/wangyh/sdxl_models/checkpoint/juggernautXL_v9Rundiffusionphoto2.safetensors"
     starttime = datetime.datetime.now()
     cmd = f'accelerate launch --num_cpu_threads_per_process 4 sd-scripts/sdxl_train_network.py'
     cmd += f' --pretrained_model_name_or_path="{base_model}"'
-    if args.ex_vae:
+    if args.add_vae:
         cmd += f' --vae="/home/wangyh/sdxl_models/vae/madebyollin-sdxl-vae-fp16-fix.safetensors"'
     cmd += f' --dataset_config="{str(dataset_config_path)}"'
     cmd += f' --output_dir="{str(output_dir)}"'
     cmd += f' --logging_dir="{str(log_dir)}"'
     cmd += f' --train_batch_size={args.batch_size}'
     cmd += f' --resolution="1024"'
-    cmd += f' --seed=43'
+    cmd += f' --seed=789987'
     cmd += f' --output_name="lora_weights"'
     cmd += f' --save_model_as=safetensors'
     cmd += f' --max_train_steps={args.max_train_steps}'
-    cmd += f' --save_every_n_steps={args.max_train_steps//10}'
+    cmd += f' --save_every_n_steps=100'
+    # cmd += f' --save_n_epoch_ratio=10'
     if args.prodigy:
         cmd += f' --optimizer_type="Prodigy"'
         cmd += f' --learning_rate=1.0'
@@ -97,8 +101,8 @@ def train_process(source_dir, args):
         cmd += f' --lr_warmup=0'
     else:
         cmd += f' --optimizer_type="AdamW"'
-        cmd += f' --learning_rate=3e-4'
-        cmd += f' --unet_lr=3e-4 --text_encoder_lr=3e-6'
+        cmd += f' --learning_rate=1e-4'
+        cmd += f' --unet_lr=1e-4 --text_encoder_lr=1e-5'
         cmd += f' --optimizer_args weight_decay=0.01 betas=0.9,0.99'
         cmd += f' --lr_scheduler="cosine"'
         cmd += f' --lr_warmup=0'
@@ -109,14 +113,20 @@ def train_process(source_dir, args):
     cmd += f' --mixed_precision="bf16"'
     cmd += f' --save_precision="fp16"'
     cmd += f' --network_train_unet_only'
-    cmd += f' --network_module=lycoris.kohya'
-    cmd += f' --network_args preset=full algo=lora conv_dim=64 conv_alpha=1.0 train_norm=True'
+    cmd += f' --network_module=networks.lora'
+    cmd += f' --network_args conv_dim=64 conv_alpha=64'
+    # cmd += f' --network_module=lycoris.kohya'
+    # cmd += f' --network_args preset=full algo=lora conv_dim=64 conv_alpha=1.0 train_norm=True'
+    # cmd += f' --network_args preset=attn-mlp algo=lora'
     cmd += f' --network_dim={args.rank}'
-    cmd += f' --network_alpha={args.rank}'
+    cmd += f' --network_alpha={int(args.rank*args.alpha)}'
     cmd += f' --log_with=wandb --wandb_run_name="{wandb_name}"'
     cmd += f' --wandb_api_key="763864d93043b06fb3556826407de609937819b1"'
-    cmd += f' --save_state_on_train_end'
-    cmd += f' --ip_noise_gamma=0.02'
+    cmd += f' --prior_loss_weight=1.0'
+    # cmd += f' --save_state_on_train_end'
+
+    with open(cmdfile, 'w') as f:
+        f.write(f"{cmd}\n")
     ret = os.system(cmd)
     if ret != 0:
         return ret

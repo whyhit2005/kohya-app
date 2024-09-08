@@ -1,6 +1,7 @@
 import os, sys, shutil
 import argparse
 from pathlib import Path
+import uuid
 
 def augment_parse():
     parser = argparse.ArgumentParser(description='Augment data for training')
@@ -10,9 +11,14 @@ def augment_parse():
     parser.add_argument('--ckpt', type=str,
                         default="stabilityai/stable-diffusion-xl-base-1.0", 
                         help='Checkpoint file')
+    parser.add_argument('--add_vae', action='store_true',
+                        help='Add VAE')
     parser.add_argument('--prompt', type=str,
                         default="solo, look at viewer, woman armor, sexy pose, full body, face focus, lake, spring",
                         help='Prompt')
+    parser.add_argument('--from_file', type=str,
+                        default=None,
+                        help='Prompt from file')
     parser.add_argument('--sample_num', type=int,
                         default=20,
                         help='Number of samples')
@@ -22,6 +28,9 @@ def augment_parse():
                         help='Initialize new data')
     parser.add_argument('--checkpoint', action='store_true',
                         help='Use checkpoint')
+    parser.add_argument('--checkpoint_range', type=str,
+                        default=None,
+                        help='test checkpoint range')
     parser.add_argument('--sample_dir', type=str,
                         default="samples",
                         help='Sample directory')
@@ -34,7 +43,9 @@ def infer(source_dir, lora_file, args):
     image_dir = source_dir / 'images'
     sample_dir = source_dir / args.sample_dir
     sample_dir.mkdir(parents=True, exist_ok=True)
-    temp_dir = source_dir / 'temp'
+    temp_name = str(uuid.uuid4())[:8]
+    temp_dir = source_dir / "temp" / temp_name
+    
     if temp_dir.exists():
         shutil.rmtree(temp_dir, ignore_errors=True)
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -50,13 +61,17 @@ def infer(source_dir, lora_file, args):
     
     cmd = f"python sd-scripts/sdxl_gen_img.py"
     cmd += f" --ckpt /home/wangyh/sdxl_models/checkpoint/sd_xl_base_1.0.safetensors"
-    cmd += f" --vae /home/wangyh/sdxl_models/vae/madebyollin-sdxl-vae-fp16-fix.safetensors"
+    if args.add_vae:
+        cmd += f" --vae /home/wangyh/sdxl_models/vae/madebyollin-sdxl-vae-fp16-fix.safetensors"
     cmd += f" --outdir {str(temp_dir)}"
-    cmd += f" --xformers --sdpa --fp16"
-    cmd += f" --W 1024 --H 1280"
-    cmd += f" --steps 50 --scale 10.0 --seed 43"
+    cmd += f" --xformers --fp16"
+    cmd += f" --W 1024 --H 1024"
+    cmd += f" --steps 50 --scale 10.0 --seed 54321"
     cmd += f" --images_per_prompt {args.sample_num}"
-    cmd += f" --prompt \"{prompt}\""
+    if args.from_file:
+        cmd += f" --from_file \"{args.from_file}\""
+    else:
+        cmd += f" --prompt \"{prompt}\""
     cmd += f" --sequential_file_name"
     cmd += f" --sampler \"dpmsolver++\""
     cmd += f" --network_module networks.lora"
@@ -77,6 +92,7 @@ def infer(source_dir, lora_file, args):
     for tfile in temp_dir.iterdir():
         if tfile.suffix in [".jpg", ".png", ".jpeg"]:
             shutil.move(tfile, sample_dir / f"{tfile.stem}_{suffix}{tfile.suffix}")
+    shutil.rmtree(temp_dir, ignore_errors=True)
     return ret
 
 def main(args):
@@ -101,6 +117,12 @@ def main(args):
         mdir = tdir / "models"
         if args.checkpoint:
             model_files = list(mdir.glob("*step*.safetensors"))
+            model_files = sorted(model_files, key=lambda x: x.name)
+            if args.checkpoint_range:
+                crange = [int(ci) for ci in args.checkpoint_range.split(",")]
+                crange[0] = max(0, crange[0])
+                crange[1] = min(len(model_files), crange[1])
+                model_files = model_files[crange[0]:crange[1]]
         else:
             model_files = [mdir / "lora_weights.safetensors"]
         model_files = sorted(model_files, key=lambda x: x.name, reverse=True)
