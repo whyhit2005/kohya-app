@@ -25,6 +25,9 @@ def argument_parse():
     parser.add_argument('--repo_id', type=str,
                         default="SmilingWolf/wd-eva02-large-tagger-v3",
                         help='Repository ID')
+    parser.add_argument('--instance_token', type=str,
+                        default="imgsks",
+                        help='Instance token')
     parser.add_argument('--class_name', type=str,
                         default="woman",
                         help='Class name to use')
@@ -77,14 +80,13 @@ black_list = [
     "eye", "lip", "nose", "ear", "mouth", "teeth", "tongue", "neck",
     "smile", 
 ]
-def clean_caption(source_dir, output_dir, class_name):
+def clean_caption(source_dir, output_dir, instance_token, class_name):
     pstr = r"|".join(black_list)
     pattern = re.compile(pstr, re.IGNORECASE)
     
     sname = source_dir.name
-    instance = sname.split('-')[-1]
     image_path = output_dir / sname / 'images'
-    concept = f"{instance} {class_name}"
+    concept = f"{instance_token} {class_name}"
     
     count = 0
     sdict = {}
@@ -265,7 +267,8 @@ def main(args):
         ret = prepare_data(folder, output_dir, regular_files, args)
         if ret != 0:
             raise ValueError(f"Error in {folder.name}")
-        orign_prompts, tag_statis = clean_caption(folder, output_dir, args.class_name)
+        orign_prompts, tag_statis = clean_caption(
+            folder, output_dir, args.instance_token, args.class_name)
         if args.gen_regular:
             generate_regular_prompt(folder, output_dir, orign_prompts, tag_statis, args)
             ret = generate_regular_images(folder, output_dir, args)

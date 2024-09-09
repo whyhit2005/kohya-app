@@ -60,20 +60,20 @@ def infer(source_dir, lora_file, args):
     prompt += f", masterpeice, perfect, high quality, ultra detail"
     
     cmd = f"python sd-scripts/sdxl_gen_img.py"
-    cmd += f" --ckpt /home/wangyh/sdxl_models/checkpoint/sd_xl_base_1.0.safetensors"
+    cmd += f" --ckpt {args.ckpt}"
     if args.add_vae:
         cmd += f" --vae /home/wangyh/sdxl_models/vae/madebyollin-sdxl-vae-fp16-fix.safetensors"
     cmd += f" --outdir {str(temp_dir)}"
     cmd += f" --xformers --fp16"
     cmd += f" --W 1024 --H 1024"
-    cmd += f" --steps 50 --scale 10.0 --seed 54321"
+    cmd += f" --steps 50 --scale 10.0 --seed 666666"
     cmd += f" --images_per_prompt {args.sample_num}"
     if args.from_file:
         cmd += f" --from_file \"{args.from_file}\""
     else:
         cmd += f" --prompt \"{prompt}\""
     cmd += f" --sequential_file_name"
-    cmd += f" --sampler \"dpmsolver++\""
+    # cmd += f" --sampler \"dpmsolver++\""
     cmd += f" --network_module networks.lora"
     cmd += f" --network_weights \"{str(lora_file)}\""
     cmd += f" --network_mul 1.0"
